@@ -12,7 +12,7 @@ export interface ConvertOptions {
   force?: boolean;
 }
 
-async function inlineImagesInHtml(html: string, baseDir: string): Promise<string> {
+export async function inlineImagesInHtml(html: string, baseDir: string): Promise<string> {
   const $ = cheerio.load(html);
   const images = $('img').toArray();
 
