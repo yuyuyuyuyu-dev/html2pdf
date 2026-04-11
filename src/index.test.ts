@@ -52,6 +52,7 @@ describe('convertHtmlToPdf', () => {
     vi.spyOn(fs, 'existsSync').mockReturnValue(true);
     const mockPage = {
       setContent: vi.fn(),
+      evaluate: vi.fn(),
       pdf: vi.fn(),
     };
     const mockBrowser = {

@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run src",
     "start": "ts-node src/index.ts",
     "build": "tsc"
   },
@@ -23,6 +23,7 @@
   "devDependencies": {
     "@types/commander": "^2.12.0",
     "@types/inquirer": "^8.2.12",
+    "@types/mime-types": "^3.0.1",
     "@types/node": "^25.5.2",
     "pdf-lib": "^1.17.1",
     "ts-node": "^10.9.2",
@@ -30,8 +31,10 @@
     "vitest": "^4.1.4"
   },
   "dependencies": {
+    "cheerio": "^1.2.0",
     "commander": "^14.0.3",
     "inquirer": "^8.2.7",
+    "mime-types": "^3.0.2",
     "puppeteer-core": "^24.40.0"
   }
 }
