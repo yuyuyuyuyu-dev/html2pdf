@@ -55,6 +55,87 @@ export async function inlineImagesInHtml(html: string, baseDir: string): Promise
   return $.html();
 }
 
+export async function inlineStylesAndFontsInHtml(html: string, baseDir: string): Promise<string> {
+  const $ = cheerio.load(html);
+  const links = $('link[rel="stylesheet"]').toArray();
+
+  // 1. Inline all stylesheets (remote and local) into <style> tags
+  for (const link of links) {
+    const href = $(link).attr('href');
+    if (!href) continue;
+
+    try {
+      let cssContent = '';
+      if (href.startsWith('http://') || href.startsWith('https://')) {
+        const response = await fetch(href, {
+          headers: {
+            // Need a modern User-Agent so Google Fonts returns woff2 instead of older formats
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          }
+        });
+        if (!response.ok) {
+          console.warn(`Warning: Failed to fetch stylesheet ${href} (status: ${response.status})`);
+          continue;
+        }
+        cssContent = await response.text();
+      } else if (!href.startsWith('data:')) {
+        // Local stylesheet
+        const cssPath = path.resolve(baseDir, href);
+        if (fs.existsSync(cssPath)) {
+          cssContent = fs.readFileSync(cssPath, 'utf8');
+        } else {
+          console.warn(`Warning: Local stylesheet not found ${cssPath}`);
+          continue;
+        }
+      }
+
+      if (cssContent) {
+        $(link).replaceWith(`<style>${cssContent}</style>`);
+      }
+    } catch (err: any) {
+      console.warn(`Warning: Error processing stylesheet ${href}: ${err.message}`);
+    }
+  }
+
+  // 2. Inline all url(...) references (like fonts or background images) inside <style> tags
+  const styles = $('style').toArray();
+  for (const style of styles) {
+    let cssContent = $(style).html() || '';
+    
+    // Match url("https://...") or url('https://...') or url(https://...)
+    const urlRegex = /url\((['"]?)(https?:\/\/[^'")]+)\1\)/g;
+    let match;
+    const replacements: { original: string, newText: string }[] = [];
+    
+    while ((match = urlRegex.exec(cssContent)) !== null) {
+      const fullMatch = match[0];
+      const resourceUrl = match[2];
+      
+      try {
+        const res = await fetch(resourceUrl);
+        if (!res.ok) continue;
+        
+        const buffer = Buffer.from(await res.arrayBuffer());
+        const contentType = res.headers.get('content-type') || mime.lookup(resourceUrl) || 'application/octet-stream';
+        const base64 = buffer.toString('base64');
+        const dataUri = `data:${contentType};charset=utf-8;base64,${base64}`;
+        
+        replacements.push({ original: fullMatch, newText: `url("${dataUri}")` });
+      } catch (err: any) {
+        console.warn(`Warning: Error fetching CSS resource ${resourceUrl}: ${err.message}`);
+      }
+    }
+    
+    for (const r of replacements) {
+      cssContent = cssContent.split(r.original).join(r.newText);
+    }
+    
+    $(style).html(cssContent);
+  }
+
+  return $.html();
+}
+
 export async function convertHtmlToPdf(options: ConvertOptions) {
   const { chromiumPath, src, dest, force } = options;
 
@@ -93,10 +174,14 @@ export async function convertHtmlToPdf(options: ConvertOptions) {
   try {
     const page = await browser.newPage();
     const rawHtmlContent = fs.readFileSync(srcPath, 'utf8');
-    
-    // Inline images before passing to Chromium
+    const baseDir = path.dirname(srcPath);
+
+    // Inline resources before passing to Chromium
     console.log('Inlining images...');
-    const htmlContent = await inlineImagesInHtml(rawHtmlContent, path.dirname(srcPath));
+    let htmlContent = await inlineImagesInHtml(rawHtmlContent, baseDir);
+    
+    console.log('Inlining stylesheets and fonts...');
+    htmlContent = await inlineStylesAndFontsInHtml(htmlContent, baseDir);
 
     // Set HTML content directly, wait until DOM is ready
     await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
