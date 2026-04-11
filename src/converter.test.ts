@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import { inlineImagesInHtml } from './converter';
+import { inlineImagesInHtml, inlineStylesAndFontsInHtml } from './converter';
 
 vi.mock('fs');
 
@@ -69,5 +69,74 @@ describe('inlineImagesInHtml', () => {
     
     // Should remain unchanged because it failed
     expect(result).toContain('src="https://example.com/notfound.png"');
+  });
+});
+
+describe('inlineStylesAndFontsInHtml', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    global.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('should fetch remote stylesheets and inline them in a style tag', async () => {
+    const html = '<html><head><link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto" /></head><body></body></html>';
+    
+    const mockResponse = {
+      ok: true,
+      text: vi.fn().mockResolvedValue('body { font-family: "Roboto"; }'),
+    };
+    (global.fetch as any).mockResolvedValue(mockResponse);
+
+    const result = await inlineStylesAndFontsInHtml(html, '/tmp');
+    
+    expect(result).toContain('<style>body { font-family: "Roboto"; }</style>');
+    expect(result).not.toContain('<link rel="stylesheet"');
+    expect(global.fetch).toHaveBeenCalledWith('https://fonts.googleapis.com/css?family=Roboto', expect.any(Object));
+  });
+
+  it('should read local stylesheets and inline them in a style tag', async () => {
+    const html = '<html><head><link rel="stylesheet" href="style.css" /></head><body></body></html>';
+    
+    vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+    vi.spyOn(fs, 'readFileSync').mockReturnValue('body { color: red; }');
+
+    const result = await inlineStylesAndFontsInHtml(html, '/tmp');
+    
+    expect(result).toContain('<style>body { color: red; }</style>');
+    expect(fs.readFileSync).toHaveBeenCalledWith(expect.stringContaining('style.css'), 'utf8');
+  });
+
+  it('should inline fonts inside url() within style tags to base64', async () => {
+    const html = '<html><head><style>@font-face { src: url("https://example.com/font.woff2"); }</style></head><body></body></html>';
+    
+    const mockResponse = {
+      ok: true,
+      headers: new Headers({ 'content-type': 'font/woff2' }),
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(4)), // 4 bytes empty data -> 'AAAAAA==' in Base64
+    };
+    (global.fetch as any).mockResolvedValue(mockResponse);
+
+    const result = await inlineStylesAndFontsInHtml(html, '/tmp');
+    
+    expect(result).toContain('url("data:font/woff2;charset=utf-8;base64,AAAAAA==")');
+    expect(global.fetch).toHaveBeenCalledWith('https://example.com/font.woff2');
+  });
+
+  it('should skip replacing url() if fetch fails', async () => {
+    const html = '<html><head><style>@font-face { src: url("https://example.com/notfound.woff2"); }</style></head><body></body></html>';
+    
+    const mockResponse = {
+      ok: false,
+      status: 404
+    };
+    (global.fetch as any).mockResolvedValue(mockResponse);
+
+    const result = await inlineStylesAndFontsInHtml(html, '/tmp');
+    
+    expect(result).toContain('url("https://example.com/notfound.woff2")');
   });
 });
