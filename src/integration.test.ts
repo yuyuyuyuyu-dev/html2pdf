@@ -86,6 +86,9 @@ describe('Integration Test: convertHtmlToPdf', () => {
     expect(pages.length).toBe(1);
 
     const firstPage = pages[0];
+    if (!firstPage) {
+      throw new Error('PDF has no pages');
+    }
     const { width, height } = firstPage.getSize();
 
     // Puppeteer might convert pixels to points (1 px = 0.75 pt) or keep them same depending on DPI.
