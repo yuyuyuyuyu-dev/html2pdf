@@ -14,8 +14,8 @@ jobs:
     name: should convert to pdf
     runs-on: ubuntu-latest
     env:
-      PAGE_WIDTH_PT: '500'
-      PAGE_HEIGHT_PT: '400'
+      PAGE_WIDTH_PT: '1440'
+      PAGE_HEIGHT_PT: '720'
     steps:
       # Arrange
       - uses: actions/checkout@v6
@@ -86,7 +86,7 @@ jobs:
                 throw new Error('Expected 1 page but got ' + pages.length);
               }
               const { width, height } = pages[0].getSize();
-              if (Math.abs(width - expectedWidth) > 1 || Math.abs(height - expectedHeight) > 1) {
+              if (width !== expectedWidth || height !== expectedHeight) {
                 throw new Error('Expected a ' + expectedWidth + 'x' + expectedHeight + ' pt page but got ' + width + 'x' + height);
               }
               console.log('Converted to a ' + width + 'x' + height + ' pt PDF page.');
