@@ -13,7 +13,11 @@ jobs:
   convert-to-pdf:
     name: should convert to pdf
     runs-on: ubuntu-latest
+    env:
+      PAGE_WIDTH_PX: '500'
+      PAGE_HEIGHT_PX: '400'
     steps:
+      # Arrange
       - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v6
@@ -24,13 +28,13 @@ jobs:
 
       - name: Write a source HTML file
         run: |
-          cat > source.html <<'HTML'
+          cat > source.html <<HTML
           <!DOCTYPE html>
           <html>
             <head>
               <style>
                 @page {
-                  size: 500px 400px;
+                  size: ${PAGE_WIDTH_PX}px ${PAGE_HEIGHT_PX}px;
                   margin: 0;
                 }
                 body {
@@ -43,11 +47,12 @@ jobs:
             </head>
             <body>
               <h1>Hello PDF</h1>
-              <p>This should be a 500x400 sized PDF page.</p>
+              <p>This should be a ${PAGE_WIDTH_PX}x${PAGE_HEIGHT_PX} px sized PDF page.</p>
             </body>
           </html>
           HTML
 
+      # Act
       - name: Convert the HTML file to a PDF file
         run: |
           CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
@@ -58,11 +63,20 @@ jobs:
           echo "Using Chromium at ${CHROMIUM_PATH}"
           node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf --force
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: output-pdf
+          path: output.pdf
+
+      # Assert
       - name: Check the PDF file
         run: |
           node -e "
             const fs = require('fs');
             const { PDFDocument } = require('pdf-lib');
+            const pointsPerCssPixel = 72 / 96;
+            const expectedWidth = Number(process.env.PAGE_WIDTH_PX) * pointsPerCssPixel;
+            const expectedHeight = Number(process.env.PAGE_HEIGHT_PX) * pointsPerCssPixel;
             const bytes = fs.readFileSync('output.pdf');
             if (bytes.subarray(0, 5).toString() !== '%PDF-') {
               throw new Error('output.pdf is not a PDF file');
@@ -73,14 +87,9 @@ jobs:
                 throw new Error('Expected 1 page but got ' + pages.length);
               }
               const { width, height } = pages[0].getSize();
-              if (Math.round(width) !== 375 || Math.round(height) !== 300) {
-                throw new Error('Expected a 375x300 pt page but got ' + width + 'x' + height);
+              if (Math.abs(width - expectedWidth) > 1 || Math.abs(height - expectedHeight) > 1) {
+                throw new Error('Expected a ' + expectedWidth + 'x' + expectedHeight + ' pt page but got ' + width + 'x' + height);
               }
               console.log('Converted to a ' + width + 'x' + height + ' pt PDF page.');
             });
           "
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: output-pdf
-          path: output.pdf
