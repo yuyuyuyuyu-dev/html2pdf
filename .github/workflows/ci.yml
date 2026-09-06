@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  convert-to-pdf:
+    name: should convert to pdf
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm run build
+
+      - name: Write a source HTML file
+        run: |
+          cat > source.html <<'HTML'
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <style>
+                @page {
+                  size: 500px 400px;
+                  margin: 0;
+                }
+                body {
+                  background-color: lightblue;
+                  margin: 0;
+                  padding: 20px;
+                  font-family: sans-serif;
+                }
+              </style>
+            </head>
+            <body>
+              <h1>Hello PDF</h1>
+              <p>This should be a 500x400 sized PDF page.</p>
+            </body>
+          </html>
+          HTML
+
+      - name: Convert the HTML file to a PDF file
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf --force
+
+      - name: Check the PDF file
+        run: |
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument } = require('pdf-lib');
+            const bytes = fs.readFileSync('output.pdf');
+            if (bytes.subarray(0, 5).toString() !== '%PDF-') {
+              throw new Error('output.pdf is not a PDF file');
+            }
+            PDFDocument.load(bytes).then((pdf) => {
+              const pages = pdf.getPages();
+              if (pages.length !== 1) {
+                throw new Error('Expected 1 page but got ' + pages.length);
+              }
+              const { width, height } = pages[0].getSize();
+              if (Math.round(width) !== 375 || Math.round(height) !== 300) {
+                throw new Error('Expected a 375x300 pt page but got ' + width + 'x' + height);
+              }
+              console.log('Converted to a ' + width + 'x' + height + ' pt PDF page.');
+            });
+          "
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: output-pdf
+          path: output.pdf
