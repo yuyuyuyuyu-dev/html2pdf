@@ -14,8 +14,8 @@ jobs:
     name: should convert to pdf
     runs-on: ubuntu-latest
     env:
-      PAGE_WIDTH_PX: '500'
-      PAGE_HEIGHT_PX: '400'
+      PAGE_WIDTH_PT: '500'
+      PAGE_HEIGHT_PT: '400'
     steps:
       # Arrange
       - uses: actions/checkout@v6
@@ -34,7 +34,7 @@ jobs:
             <head>
               <style>
                 @page {
-                  size: ${PAGE_WIDTH_PX}px ${PAGE_HEIGHT_PX}px;
+                  size: ${PAGE_WIDTH_PT}pt ${PAGE_HEIGHT_PT}pt;
                   margin: 0;
                 }
                 body {
@@ -47,7 +47,7 @@ jobs:
             </head>
             <body>
               <h1>Hello PDF</h1>
-              <p>This should be a ${PAGE_WIDTH_PX}x${PAGE_HEIGHT_PX} px sized PDF page.</p>
+              <p>This should be a ${PAGE_WIDTH_PT}x${PAGE_HEIGHT_PT} pt sized PDF page.</p>
             </body>
           </html>
           HTML
@@ -74,9 +74,8 @@ jobs:
           node -e "
             const fs = require('fs');
             const { PDFDocument } = require('pdf-lib');
-            const pointsPerCssPixel = 72 / 96;
-            const expectedWidth = Number(process.env.PAGE_WIDTH_PX) * pointsPerCssPixel;
-            const expectedHeight = Number(process.env.PAGE_HEIGHT_PX) * pointsPerCssPixel;
+            const expectedWidth = Number(process.env.PAGE_WIDTH_PT);
+            const expectedHeight = Number(process.env.PAGE_HEIGHT_PT);
             const bytes = fs.readFileSync('output.pdf');
             if (bytes.subarray(0, 5).toString() !== '%PDF-') {
               throw new Error('output.pdf is not a PDF file');
