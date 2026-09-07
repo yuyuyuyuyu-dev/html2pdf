@@ -1,14 +1,11 @@
 name: CI
-
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
   convert-to-pdf:
     name: should convert to pdf
@@ -19,13 +16,11 @@ jobs:
     steps:
       # Arrange
       - uses: actions/checkout@v6
-
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
       - run: npm ci
       - run: npm run build
-
       - name: Write a source HTML file
         run: |
           cat > source.html <<HTML
@@ -51,7 +46,6 @@ jobs:
             </body>
           </html>
           HTML
-
       # Act
       - name: Convert the HTML file to a PDF file
         run: |
@@ -62,12 +56,10 @@ jobs:
           fi
           echo "Using Chromium at ${CHROMIUM_PATH}"
           node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf --force
-
       - uses: actions/upload-artifact@v4
         with:
           name: output-pdf
           path: output.pdf
-
       # Assert
       - name: Check the PDF file
         run: |
@@ -92,3 +84,48 @@ jobs:
               console.log('Converted to a ' + width + 'x' + height + ' pt PDF page.');
             });
           "
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm test
+  biome:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npx biome ci
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download actionlint
+        id: actionlint
+        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+        shell: bash
+      - run: ${{ steps.actionlint.outputs.executable }} -color
+        shell: bash
+  yamlfmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker://ghcr.io/google/yamlfmt:latest
+        with:
+          args: -lint .
+  publint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm run build
+      - run: npm run publint
