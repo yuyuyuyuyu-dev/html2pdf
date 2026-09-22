@@ -49,7 +49,7 @@
 	},
 	"dependencies": {
 		"cheerio": "^1.2.0",
-		"commander": "^14.0.3",
+		"commander": "^15.0.0",
 		"inquirer": "^8.2.7",
 		"mime-types": "^3.0.2",
 		"puppeteer-core": "^24.40.0"
