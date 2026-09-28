@@ -45,7 +45,7 @@
 		"publint": "^0.3.24",
 		"ts-node": "^10.9.2",
 		"typescript": "^6.0.2",
-		"vitest": "^4.1.4"
+		"vitest": "^5.0.1"
 	},
 	"dependencies": {
 		"cheerio": "^1.2.0",
