@@ -18,7 +18,8 @@
 		"build": "tsc",
 		"format": "biome format --write",
 		"lint": "biome check",
-		"publint": "publint"
+		"publint": "publint",
+		"oxfmt": "oxfmt"
 	},
 	"repository": {
 		"type": "git",
@@ -41,6 +42,7 @@
 		"@types/inquirer": "^8.2.12",
 		"@types/mime-types": "^3.0.1",
 		"@types/node": "^25.5.2",
+		"oxfmt": "0.74.0",
 		"pdf-lib": "^1.17.1",
 		"publint": "^0.3.24",
 		"ts-node": "^10.9.2",

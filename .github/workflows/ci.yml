@@ -11,14 +11,14 @@ jobs:
     name: should convert to pdf
     runs-on: ubuntu-latest
     env:
-      PAGE_WIDTH_PT: '1440'
-      PAGE_HEIGHT_PT: '720'
+      PAGE_WIDTH_PT: "1440"
+      PAGE_HEIGHT_PT: "720"
     steps:
       # Arrange
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: "24"
       - run: npm ci
       - run: npm run build
       - name: Write a source HTML file
@@ -90,18 +90,14 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: "24"
       - run: npm ci
       - run: npm test
   biome:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-      - run: npm ci
-      - run: npx biome ci
+    name: Biome
+    permissions:
+      contents: read
+    uses: yuyuyuyuyu-dev/repo-config/.github/workflows/biome.yml@feat/biome-and-pnpm
   actionlint:
     runs-on: ubuntu-latest
     steps:
@@ -112,20 +108,18 @@ jobs:
         shell: bash
       - run: ${{ steps.actionlint.outputs.executable }} -color
         shell: bash
-  yamlfmt:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: docker://ghcr.io/google/yamlfmt:latest
-        with:
-          args: -lint .
+  oxfmt:
+    name: Oxfmt
+    permissions:
+      contents: read
+    uses: yuyuyuyuyu-dev/repo-config/.github/workflows/oxfmt.yml@feat/biome-and-pnpm
   publint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: "24"
       - run: npm ci
       - run: npm run build
       - run: npm run publint

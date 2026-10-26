@@ -7,6 +7,7 @@
 Node.js, Chromium
 
 **e.g.**
+
 ```bash
 pkg install -y x11-repo
 pkg install -y nodejs chromium
@@ -19,6 +20,7 @@ npx @yuyuyuyuyu-dev/html2pdf --chromium-path {Chromium path} --src {Source HTML 
 ```
 
 **e.g.**
+
 ```bash
 npx @yuyuyuyuyu-dev/html2pdf --chromium-path "$(type -p chromium-browser)" --src ~/storage/downloads/index.html --dest ~/storage/downloads/output.pdf
 ```
