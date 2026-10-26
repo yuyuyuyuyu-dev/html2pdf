@@ -97,7 +97,7 @@ jobs:
     name: Biome
     permissions:
       contents: read
-    uses: yuyuyuyuyu-dev/repo-config/.github/workflows/biome.yml@feat/biome-and-pnpm
+    uses: yuyuyuyuyu-dev/repo-config/.github/workflows/biome.yml@main
   actionlint:
     runs-on: ubuntu-latest
     steps:
@@ -112,7 +112,7 @@ jobs:
     name: Oxfmt
     permissions:
       contents: read
-    uses: yuyuyuyuyu-dev/repo-config/.github/workflows/oxfmt.yml@feat/biome-and-pnpm
+    uses: yuyuyuyuyu-dev/repo-config/.github/workflows/oxfmt.yml@main
   publint:
     runs-on: ubuntu-latest
     steps:
