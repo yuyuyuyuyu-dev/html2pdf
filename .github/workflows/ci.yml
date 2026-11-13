@@ -108,11 +108,6 @@ jobs:
         shell: bash
       - run: ${{ steps.actionlint.outputs.executable }} -color
         shell: bash
-  oxfmt:
-    name: Oxfmt
-    permissions:
-      contents: read
-    uses: yuyuyuyuyu-dev/repo-config/.github/workflows/oxfmt.yml@main
   publint:
     runs-on: ubuntu-latest
     steps:
