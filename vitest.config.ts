@@ -7,13 +7,6 @@ export default defineConfig({
 			{
 				extends: true,
 				test: {
-					name: "spec",
-					include: ["test/spec/**/*.test.ts"],
-				},
-			},
-			{
-				extends: true,
-				test: {
 					name: "non-spec",
 					include: ["test/non-spec/**/*.test.ts"],
 				},
