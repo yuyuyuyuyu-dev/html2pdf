@@ -1,0 +1,25 @@
+name: Non-spec test
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  non-spec-test:
+    name: Non-spec test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - run: npm run test:non-spec
