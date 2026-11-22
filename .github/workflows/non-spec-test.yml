@@ -1,0 +1,938 @@
+name: Non-spec test
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  fail-without-required-option:
+    name: should fail when a required option is missing
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Write a source HTML file
+        run: echo "<p>Hello</p>" > source.html
+      # Act
+      - name: Convert the HTML file without a destination
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 1
+          grep -F -- "--dest" stderr.txt
+  fail-without-chromium:
+    name: should fail when Chromium is not found
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Write a source HTML file
+        run: echo "<p>Hello</p>" > source.html
+      # Act
+      - name: Convert the HTML file with a missing Chromium
+        run: |
+          set +e
+          node dist/index.js --chromium-path missing-chromium --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 1
+          grep -F "Error: Chromium not found at: missing-chromium" stderr.txt
+          test ! -e output.pdf
+  fail-without-source:
+    name: should fail when the source HTML file is not found
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      # Act
+      - name: Convert a missing HTML file
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src missing.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 1
+          grep -F "Error: Source HTML file not found: missing.html" stderr.txt
+          test ! -e output.pdf
+  resolve-paths-from-current-directory:
+    name: should resolve the source and destination paths from the current directory
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Write a source HTML file
+        run: |
+          mkdir -p work/in work/out
+          echo "<p>Hello</p>" > work/in/source.html
+      # Act
+      - name: Convert the HTML file from another directory
+        run: |
+          set +e
+          cd work
+          node ../dist/index.js --chromium-path "${CHROMIUM_PATH}" --src in/source.html --dest out/output.pdf > ../stdout.txt 2> ../stderr.txt
+          echo "$?" > ../exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('work/out/output.pdf')).then((pdf) => {
+              const count = pdf.getPageCount();
+              if (count !== 1) {
+                throw new Error('Expected 1 page but got ' + count);
+              }
+            });
+          "
+  keep-destination-when-declined:
+    name: should keep the existing destination file when overwriting is declined
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Write a source HTML file and an existing destination file
+        run: |
+          echo "<p>Hello</p>" > source.html
+          echo "existing" > output.pdf
+      # Act
+      - name: Convert the HTML file and decline overwriting
+        run: |
+          set +e
+          printf 'n\n' | node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          grep -F "Skipped." stdout.txt
+          test "$(cat output.pdf)" = "existing"
+  overwrite-destination-when-accepted:
+    name: should overwrite the existing destination file when overwriting is accepted
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Write a source HTML file and an existing destination file
+        run: |
+          echo "<p>Hello</p>" > source.html
+          echo "existing" > output.pdf
+      # Act
+      - name: Convert the HTML file and accept overwriting
+        run: |
+          set +e
+          printf 'y\n' | node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const count = pdf.getPageCount();
+              if (count !== 1) {
+                throw new Error('Expected 1 page but got ' + count);
+              }
+            });
+          "
+  overwrite-destination-with-force:
+    name: should overwrite the existing destination file without asking when --force is given
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Write a source HTML file and an existing destination file
+        run: |
+          echo "<p>Hello</p>" > source.html
+          echo "existing" > output.pdf
+      # Act
+      - name: Convert the HTML file with --force
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf --force < /dev/null > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          if tr -d '[:space:]' < stdout.txt | grep -F "(y/N)"; then
+            echo "Expected no overwrite prompt."
+            exit 1
+          fi
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const count = pdf.getPageCount();
+              if (count !== 1) {
+                throw new Error('Expected 1 page but got ' + count);
+              }
+            });
+          "
+  overwrite-destination-with-y:
+    name: should overwrite the existing destination file without asking when -y is given
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Write a source HTML file and an existing destination file
+        run: |
+          echo "<p>Hello</p>" > source.html
+          echo "existing" > output.pdf
+      # Act
+      - name: Convert the HTML file with -y
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf -y < /dev/null > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          if tr -d '[:space:]' < stdout.txt | grep -F "(y/N)"; then
+            echo "Expected no overwrite prompt."
+            exit 1
+          fi
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const count = pdf.getPageCount();
+              if (count !== 1) {
+                throw new Error('Expected 1 page but got ' + count);
+              }
+            });
+          "
+  use-a4-by-default:
+    name: should use A4 when the HTML does not set a page size
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Write a source HTML file
+        run: echo "<p>Hello</p>" > source.html
+      # Act
+      - name: Convert the HTML file to a PDF file
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const { width, height } = pdf.getPage(0).getSize();
+              if (Math.abs(width - 595.28) > 5 || Math.abs(height - 841.89) > 5) {
+                throw new Error('Expected an A4 page but got ' + width + 'x' + height);
+              }
+            });
+          "
+  embed-local-image:
+    name: should embed a local image
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Write a source HTML file and an image file
+        run: |
+          echo "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAoElEQVR4nA3OgQADUQxEwSAUIQiHEIRDWISPsAiHEIRDCEIRYvLaIZiICDI+VCSKC0fRcTMhNg4R+SEzqbxQFs6bTjF52DQRlWRdVBWqG5foOkyZrYcIXaSK0o0krEPLjB5WTYSL9E1ZyAfbtB/Gzfr9H/omW1Qf1Mb90N1Mv2zP/zAi51BjNA+epudlZtj5/g97yDW1D9rG+9I7zH7ZXX7jRpPBudYfSAAAAABJRU5ErkJggg==" | base64 -d > image.png
+          echo '<img src="image.png" width="100" height="100">' > source.html
+      # Act
+      - name: Convert the HTML file to a PDF file
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument, PDFName, PDFStream } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const count = pdf.context.enumerateIndirectObjects().filter(([, object]) => object instanceof PDFStream && object.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')).length;
+              if (count !== 1) {
+                throw new Error('Expected 1 image but got ' + count);
+              }
+            });
+          "
+  embed-remote-image:
+    name: should embed a remote image
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Start a fake remote server
+        run: |
+          mkdir server
+          echo "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAoElEQVR4nA3OgQADUQxEwSAUIQiHEIRDWISPsAiHEIRDCEIRYvLaIZiICDI+VCSKC0fRcTMhNg4R+SEzqbxQFs6bTjF52DQRlWRdVBWqG5foOkyZrYcIXaSK0o0krEPLjB5WTYSL9E1ZyAfbtB/Gzfr9H/omW1Qf1Mb90N1Mv2zP/zAi51BjNA+epudlZtj5/g97yDW1D9rG+9I7zH7ZXX7jRpPBudYfSAAAAABJRU5ErkJggg==" | base64 -d > server/image.png
+          python3 -m http.server 8000 --bind 127.0.0.1 --directory server > server.log 2>&1 &
+          curl --silent --retry 10 --retry-connrefused --retry-delay 1 --output /dev/null http://127.0.0.1:8000/
+      - name: Write a source HTML file
+        run: echo '<img src="http://127.0.0.1:8000/image.png" width="100" height="100">' > source.html
+      # Act
+      - name: Convert the HTML file to a PDF file
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument, PDFName, PDFStream } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const count = pdf.context.enumerateIndirectObjects().filter(([, object]) => object instanceof PDFStream && object.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')).length;
+              if (count !== 1) {
+                throw new Error('Expected 1 image but got ' + count);
+              }
+            });
+          "
+  embed-data-uri-image:
+    name: should embed an image given as a data URI
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Write a source HTML file
+        run: echo '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAoElEQVR4nA3OgQADUQxEwSAUIQiHEIRDWISPsAiHEIRDCEIRYvLaIZiICDI+VCSKC0fRcTMhNg4R+SEzqbxQFs6bTjF52DQRlWRdVBWqG5foOkyZrYcIXaSK0o0krEPLjB5WTYSL9E1ZyAfbtB/Gzfr9H/omW1Qf1Mb90N1Mv2zP/zAi51BjNA+epudlZtj5/g97yDW1D9rG+9I7zH7ZXX7jRpPBudYfSAAAAABJRU5ErkJggg==" width="100" height="100">' > source.html
+      # Act
+      - name: Convert the HTML file to a PDF file
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument, PDFName, PDFStream } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const count = pdf.context.enumerateIndirectObjects().filter(([, object]) => object instanceof PDFStream && object.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')).length;
+              if (count !== 1) {
+                throw new Error('Expected 1 image but got ' + count);
+              }
+            });
+          "
+  skip-missing-local-image:
+    name: should convert without a local image that is not found
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Write a source HTML file
+        run: echo '<img src="missing.png" width="100" height="100">' > source.html
+      # Act
+      - name: Convert the HTML file to a PDF file
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          grep -F "Warning: Local image not found" stderr.txt
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument, PDFName, PDFStream } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const count = pdf.context.enumerateIndirectObjects().filter(([, object]) => object instanceof PDFStream && object.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')).length;
+              if (count !== 0) {
+                throw new Error('Expected no image but got ' + count);
+              }
+            });
+          "
+  skip-unfetchable-remote-image:
+    name: should convert without a remote image that cannot be fetched
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Start a fake remote server
+        run: |
+          mkdir server
+          python3 -m http.server 8000 --bind 127.0.0.1 --directory server > server.log 2>&1 &
+          curl --silent --retry 10 --retry-connrefused --retry-delay 1 --output /dev/null http://127.0.0.1:8000/
+      - name: Write a source HTML file
+        run: echo '<img src="http://127.0.0.1:8000/missing.png" width="100" height="100">' > source.html
+      # Act
+      - name: Convert the HTML file to a PDF file
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          grep -F "Warning: Failed to fetch remote image http://127.0.0.1:8000/missing.png" stderr.txt
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const count = pdf.getPageCount();
+              if (count !== 1) {
+                throw new Error('Expected 1 page but got ' + count);
+              }
+            });
+          "
+  apply-local-stylesheet:
+    name: should apply a local stylesheet
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Write a source HTML file and a stylesheet
+        run: |
+          echo "@page { size: 300pt 225pt; margin: 0; }" > style.css
+          echo '<link rel="stylesheet" href="style.css"><p>Hello</p>' > source.html
+      # Act
+      - name: Convert the HTML file to a PDF file
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const { width, height } = pdf.getPage(0).getSize();
+              if (Math.abs(width - 300) >= 0.5 || Math.abs(height - 225) >= 0.5) {
+                throw new Error('Expected a 300x225 pt page but got ' + width + 'x' + height);
+              }
+            });
+          "
+  apply-remote-stylesheet:
+    name: should apply a remote stylesheet
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Start a fake remote server
+        run: |
+          mkdir server
+          echo "@page { size: 300pt 225pt; margin: 0; }" > server/style.css
+          python3 -m http.server 8000 --bind 127.0.0.1 --directory server > server.log 2>&1 &
+          curl --silent --retry 10 --retry-connrefused --retry-delay 1 --output /dev/null http://127.0.0.1:8000/
+      - name: Write a source HTML file
+        run: echo '<link rel="stylesheet" href="http://127.0.0.1:8000/style.css"><p>Hello</p>' > source.html
+      # Act
+      - name: Convert the HTML file to a PDF file
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const { width, height } = pdf.getPage(0).getSize();
+              if (Math.abs(width - 300) >= 0.5 || Math.abs(height - 225) >= 0.5) {
+                throw new Error('Expected a 300x225 pt page but got ' + width + 'x' + height);
+              }
+            });
+          "
+  skip-missing-local-stylesheet:
+    name: should convert without a local stylesheet that is not found
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Write a source HTML file
+        run: echo '<link rel="stylesheet" href="missing.css"><p>Hello</p>' > source.html
+      # Act
+      - name: Convert the HTML file to a PDF file
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          grep -F "Warning: Local stylesheet not found" stderr.txt
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const count = pdf.getPageCount();
+              if (count !== 1) {
+                throw new Error('Expected 1 page but got ' + count);
+              }
+            });
+          "
+  skip-unfetchable-remote-stylesheet:
+    name: should convert without a remote stylesheet that cannot be fetched
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Start a fake remote server
+        run: |
+          mkdir server
+          python3 -m http.server 8000 --bind 127.0.0.1 --directory server > server.log 2>&1 &
+          curl --silent --retry 10 --retry-connrefused --retry-delay 1 --output /dev/null http://127.0.0.1:8000/
+      - name: Write a source HTML file
+        run: echo '<link rel="stylesheet" href="http://127.0.0.1:8000/missing.css"><p>Hello</p>' > source.html
+      # Act
+      - name: Convert the HTML file to a PDF file
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          grep -F "Warning: Failed to fetch stylesheet http://127.0.0.1:8000/missing.css" stderr.txt
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const count = pdf.getPageCount();
+              if (count !== 1) {
+                throw new Error('Expected 1 page but got ' + count);
+              }
+            });
+          "
+  embed-url-resource-in-style-element:
+    name: should embed a remote resource referenced by url() in a style element
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Start a fake remote server
+        run: |
+          mkdir server
+          echo "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAoElEQVR4nA3OgQADUQxEwSAUIQiHEIRDWISPsAiHEIRDCEIRYvLaIZiICDI+VCSKC0fRcTMhNg4R+SEzqbxQFs6bTjF52DQRlWRdVBWqG5foOkyZrYcIXaSK0o0krEPLjB5WTYSL9E1ZyAfbtB/Gzfr9H/omW1Qf1Mb90N1Mv2zP/zAi51BjNA+epudlZtj5/g97yDW1D9rG+9I7zH7ZXX7jRpPBudYfSAAAAABJRU5ErkJggg==" | base64 -d > server/image.png
+          python3 -m http.server 8000 --bind 127.0.0.1 --directory server > server.log 2>&1 &
+          curl --silent --retry 10 --retry-connrefused --retry-delay 1 --output /dev/null http://127.0.0.1:8000/
+      - name: Write a source HTML file
+        run: |
+          echo '<style>body { background-image: url("http://127.0.0.1:8000/image.png"); }</style><p>Hello</p>' > source.html
+      # Act
+      - name: Convert the HTML file to a PDF file
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument, PDFName, PDFStream } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const count = pdf.context.enumerateIndirectObjects().filter(([, object]) => object instanceof PDFStream && object.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')).length;
+              if (count !== 1) {
+                throw new Error('Expected 1 image but got ' + count);
+              }
+            });
+          "
+  embed-url-resource-in-remote-stylesheet:
+    name: should embed a remote resource referenced by url() in a remote stylesheet
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Start a fake remote server
+        run: |
+          mkdir server
+          echo "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAoElEQVR4nA3OgQADUQxEwSAUIQiHEIRDWISPsAiHEIRDCEIRYvLaIZiICDI+VCSKC0fRcTMhNg4R+SEzqbxQFs6bTjF52DQRlWRdVBWqG5foOkyZrYcIXaSK0o0krEPLjB5WTYSL9E1ZyAfbtB/Gzfr9H/omW1Qf1Mb90N1Mv2zP/zAi51BjNA+epudlZtj5/g97yDW1D9rG+9I7zH7ZXX7jRpPBudYfSAAAAABJRU5ErkJggg==" | base64 -d > server/image.png
+          echo '@page { size: 300pt 225pt; margin: 0; } body { background-image: url("http://127.0.0.1:8000/image.png"); }' > server/style.css
+          python3 -m http.server 8000 --bind 127.0.0.1 --directory server > server.log 2>&1 &
+          curl --silent --retry 10 --retry-connrefused --retry-delay 1 --output /dev/null http://127.0.0.1:8000/
+      - name: Write a source HTML file
+        run: echo '<link rel="stylesheet" href="http://127.0.0.1:8000/style.css"><p>Hello</p>' > source.html
+      # Act
+      - name: Convert the HTML file to a PDF file
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument, PDFName, PDFStream } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const { width, height } = pdf.getPage(0).getSize();
+              if (Math.abs(width - 300) >= 0.5 || Math.abs(height - 225) >= 0.5) {
+                throw new Error('Expected a 300x225 pt page but got ' + width + 'x' + height);
+              }
+              const count = pdf.context.enumerateIndirectObjects().filter(([, object]) => object instanceof PDFStream && object.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')).length;
+              if (count !== 1) {
+                throw new Error('Expected 1 image but got ' + count);
+              }
+            });
+          "
+  skip-unfetchable-url-resource:
+    name: should convert without a remote resource referenced by url() that cannot be fetched
+    runs-on: ubuntu-latest
+    steps:
+      # Arrange
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run build
+      - name: Find Chromium
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "${CHROMIUM_PATH}" ]; then
+            echo "No Chromium is installed on this runner."
+            exit 1
+          fi
+          echo "Using Chromium at ${CHROMIUM_PATH}"
+          echo "CHROMIUM_PATH=${CHROMIUM_PATH}" >> "${GITHUB_ENV}"
+      - name: Start a fake remote server
+        run: |
+          mkdir server
+          python3 -m http.server 8000 --bind 127.0.0.1 --directory server > server.log 2>&1 &
+          curl --silent --retry 10 --retry-connrefused --retry-delay 1 --output /dev/null http://127.0.0.1:8000/
+      - name: Write a source HTML file
+        run: |
+          echo '<style>body { background-image: url("http://127.0.0.1:8000/missing.png"); }</style><p>Hello</p>' > source.html
+      # Act
+      - name: Convert the HTML file to a PDF file
+        run: |
+          set +e
+          node dist/index.js --chromium-path "${CHROMIUM_PATH}" --src source.html --dest output.pdf > stdout.txt 2> stderr.txt
+          echo "$?" > exit-code.txt
+      # Assert
+      - name: Check the result
+        run: |
+          cat stdout.txt stderr.txt
+          test "$(cat exit-code.txt)" -eq 0
+          node -e "
+            const fs = require('fs');
+            const { PDFDocument, PDFName, PDFStream } = require('pdf-lib');
+            PDFDocument.load(fs.readFileSync('output.pdf')).then((pdf) => {
+              const count = pdf.context.enumerateIndirectObjects().filter(([, object]) => object instanceof PDFStream && object.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')).length;
+              if (count !== 0) {
+                throw new Error('Expected no image but got ' + count);
+              }
+            });
+          "

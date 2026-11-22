@@ -13,7 +13,6 @@
 		"access": "public"
 	},
 	"scripts": {
-		"test": "vitest run src",
 		"start": "ts-node src/index.ts",
 		"build": "tsc",
 		"publint": "publint",
@@ -43,8 +42,7 @@
 		"pdf-lib": "^1.17.1",
 		"publint": "^0.3.24",
 		"ts-node": "^10.9.2",
-		"typescript": "^7.0.2",
-		"vitest": "^5.0.1"
+		"typescript": "^7.0.2"
 	},
 	"dependencies": {
 		"cheerio": "^1.2.0",
