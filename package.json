@@ -13,7 +13,9 @@
 		"access": "public"
 	},
 	"scripts": {
-		"test": "vitest run src",
+		"test": "npm run build && vitest run",
+		"test:spec": "npm run build && vitest run --project spec",
+		"test:non-spec": "npm run build && vitest run --project non-spec",
 		"start": "ts-node src/index.ts",
 		"build": "tsc",
 		"publint": "publint",
